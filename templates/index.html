@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>Kandang Monitoring</title>
+    <style>
+        /* Container for Fan and Lamp */
+        .devices-container {
+            display: flex;
+            justify-content: space-evenly;
+            align-items: center;
+            margin: 30px 0;
+        }
+
+        /* Kipas Animation */
+        .fan {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            width: 150px;
+            height: 150px;
+            position: relative;
+        }
+
+        .fan svg {
+            width: 150px;
+            height: 150px;
+            animation: spin 0s linear infinite; /* Default no spin */
+        }
+
+        .fan.on svg {
+            animation: spin 1s linear infinite; /* Spinning when ON */
+        }
+
+        @keyframes spin {
+            from {
+                transform: rotate(0deg);
+            }
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Lamp Animation */
+        .lamp {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            width: 100px;
+            height: 200px;
+            position: relative;
+        }
+
+        .lamp svg {
+            width: 80px;
+            height: 150px;
+            filter: brightness(0.5);
+            transition: filter 0.3s, box-shadow 0.3s;
+        }
+
+        .lamp.on svg {
+            filter: brightness(2);
+            box-shadow: 0 0 25px yellow;
+        }
+
+        .lamp p {
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Kandang Monitoring</h1>
+        
+        <!-- Status Section -->
+        <div id="status-section">
+            <h2>Status Kandang</h2>
+            <p id="status">Loading...</p>
+        </div>
+
+        <!-- Devices Section -->
+        <div class="devices-container">
+            <!-- Kipas -->
+            <div id="fan" class="fan">
+                <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="50" cy="50" r="45" stroke="lightgray" stroke-width="5" fill="none"/>
+                    <line x1="50" y1="50" x2="50" y2="10" stroke="blue" stroke-width="4" stroke-linecap="round"/>
+                    <line x1="50" y1="50" x2="90" y2="50" stroke="blue" stroke-width="4" stroke-linecap="round"/>
+                    <line x1="50" y1="50" x2="10" y2="50" stroke="blue" stroke-width="4" stroke-linecap="round"/>
+                    <line x1="50" y1="50" x2="50" y2="90" stroke="blue" stroke-width="4" stroke-linecap="round"/>
+                </svg>
+                <p id="fan-status">Loading...</p>
+            </div>
+
+            <!-- Lampu -->
+            <div id="lamp" class="lamp">
+                <svg viewBox="0 0 100 150" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Lamp String -->
+                    <line x1="50" y1="0" x2="50" y2="20" stroke="gray" stroke-width="4" />
+                    <!-- Lamp Bulb -->
+                    <ellipse cx="50" cy="60" rx="30" ry="40" fill="yellow" />
+                    <!-- Lamp Base -->
+                    <rect x="35" y="100" width="30" height="10" fill="black" />
+                </svg>
+                <p id="lamp-status">Loading...</p>
+            </div>
+        </div>
+
+        <!-- History Table -->
+        <div id="history-section">
+            <h2>History Tindakan Sensor</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Waktu</th>
+                        <th>Status Kandang</th>
+                        <th>Status Kipas</th>
+                        <th>Status Lampu</th>
+                        <th>Tindakan</th>
+                    </tr>
+                </thead>
+                <tbody id="history-table">
+                    <tr>
+                        <td colspan="5">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Chart Section -->
+        <div id="chart-section">
+            <h2>Grafik History Status Kandang</h2>
+            <canvas id="statusChart"></canvas>
+        </div>
+    </div>
+
+    <script src="/static/chart.js"></script>
+    <script>
+        // Fetch status data
+        async function fetchStatus() {
+            const response = await fetch('/status');
+            const data = await response.json();
+
+            // Update status text
+            document.getElementById('status').innerText = data.status;
+
+            // Update fan status
+            const fanElement = document.getElementById('fan');
+            document.getElementById('fan-status').innerText = `Kipas: ${data.fan_status}`;
+            fanElement.classList.toggle("on", data.fan_status === "ON");
+
+            // Update lamp status
+            const lampElement = document.getElementById('lamp');
+            document.getElementById('lamp-status').innerText = `Lampu Tambahan: ${data.lamp_status}`;
+            lampElement.classList.toggle("on", data.lamp_status === "ON");
+        }
+
+        // Fetch history data
+        async function fetchHistory() {
+            const response = await fetch('/history');
+            const data = await response.json();
+            const tableBody = document.getElementById('history-table');
+            tableBody.innerHTML = ''; // Clear existing table rows
+
+            data.reverse().forEach(item => { // Reverse data array for newest-first order
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${item.timestamp || "N/A"}</td>
+                    <td>${item.status}</td>
+                    <td>${item.fan_status}</td>
+                    <td>${item.lamp_status}</td>
+                    <td>${item.actions.join(", ") || "Tidak ada tindakan"}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+
+            updateChart(data);
+        }
+
+        // Update chart with history data
+        function updateChart(data) {
+            const labels = data.map(item => item.timestamp || "N/A");
+            const statuses = data.map(item => (item.status === "Kandang Stabil" ? 1 : 0));
+
+            chart.data.labels = labels;
+            chart.data.datasets[0].data = statuses;
+            chart.update();
+        }
+
+        // Initialize chart
+        const ctx = document.getElementById('statusChart').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Status Kandang (1 = Stabil, 0 = Tidak Stabil)',
+                    data: [],
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 2,
+                    fill: false
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 1
+                    }
+                }
+            }
+        });
+
+        // Refresh data every 5 seconds
+        setInterval(() => {
+            fetchStatus();
+            fetchHistory();
+        }, 5000);
+
+        fetchStatus();
+        fetchHistory();
+    </script>
+</body>
+</html>
